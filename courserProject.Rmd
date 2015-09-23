@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Victor van den Broek"
+date: "23 september 2015"
+output: html_document
+---
+
+## Introduction
+
+In this document I will explore the pml data from http://groupware.les.inf.puc-rio.br/har which contains a lot of measurement information from devices like Jawbone UP, Nike Fuelband and so forth, containing sensory information. The activities were also labelled as A, B, C, D and E, corresponding to Sitting, Sitting down, Standing, Standing up and Walking. 
+
+The challenge is to use the training data and build a model to predict which activity class a person is in.
+
+## Getting and cleaning data
+
+I load necessary packages and download the data, as well as change the classe variable from character to a factor (needed for the machine learning packages).
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+
+if (!file.exists("pml-training.csv")) {
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+                      "pml-training.csv")
+}
+
+
+alldata <- read.csv("pml-training.csv")
+alldata$classe <- as.factor(alldata$classe)
+```
+
+I then split the data into a training set and a test set. The test set is set aside until final verification and estimation of the out of sample error rate. I use 70% for the train set and 30% for the test set. There is a lot of data (19622 observations) so that leaves a sufficient size for the test set.
+
+```{r}
+set.seed(1980)
+trainingIndex <- createDataPartition(alldata$classe, p=0.7, list=FALSE)
+train <- alldata[trainingIndex,]
+test <- alldata[-trainingIndex,]
+```
+
+Exploring the data, it is clear not all fields are filled well, and some are identifiers, which is useless for machine learning.
+
+```{r}
+str(train)
+```
+
+So I remove the first 7 columns as they contain no information for the machine learning algorithm.
+
+```{r}
+train <- train[, -1:-7]
+```
+
+Next I want to remove variables that contain hardly any information - the so called near-zero-variables.
+
+```{r}
+nzv <- nearZeroVar(train)
+train <- train[,-nzv]
+```
+
+As a next step, I see that some variables are hardly ever filled. I only keep those that are always filled.
+
+```{r}
+mostly_filled <- apply(train,2,function(x) {sum(is.na(x))})
+remove <- which(mostly_filled>0)
+train <- train[,-remove]
+dim(train)
+```
+
+This leaves me a dataset with 52 variables and the classe variable which is the outcome.
+
+```{r}
+str(train)
+```
+
+I apply the same manipulations to the test set, to ensure data consistency
+
+```{r}
+test <- test[,-1:-7]
+test <- test[,-nzv]
+test <- test[,-remove]
+dim(test)
+```
+
+## Choosing an algorithm
+
+Because the question at hand is a classification problem, I looked at decision trees and random forests. Initial exploration with decision trees left them insufficient as a mechanism, I decided to use the random forest methodology. This piece of code will take a long time to run (1-2 hours) because it is running a lot of analysis.
+
+I do 20 cross validations in order to ensure that there is no overfitting on the data.
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(90210)
+modelFit <- train(classe ~ ., method="rf", data=train, trControl=trainControl(method="cv", number=20))
+```
+
+Let's see what the output gives us.
+
+```{r}
+modelFit
+```
+
+The algorithm shows that there it reached an accuracy of 99.3% on it's own cross validation. 
+
+## Train set: How well are we doing?
+
+I applying it again to the training set to see what accuracy is accomplished there.
+
+```{r}
+confusionMatrix(train$classe, predict(modelFit, train))
+```
+
+
+## Test set: Out of sample error rate
+
+A 100% accuracy is hard to believe, and may stil be a result of some overfitting. Still, as it was described that random forests tend to perform extremely well, but are hard to interpret I continue with the model as is. I verify on the test set to see what type of out of sample error rate I can expect.
+
+```{r}
+confusionMatrix(test$classe, predict(modelFit, test))
+```
+
+This gives an accuracy of 99.4% for the test set, similar to what the cross validation expected. All in all that is a very accurate model for the data and I decide to keep the current model.
+
+## Final Model
+
+```{r}
+modelFit$finalModel
+```
+
+Thank you for reading my document and I hope you found similar results in your project!
